@@ -573,21 +573,17 @@ ps_start(struct dhcpcd_ctx *ctx)
 		logdebugx("spawned privileged proxy on PID %d", pid);
 	}
 
-	/* No point in spawning the generic network listener if we're
-	 * not going to use it. */
-	if (!ps_inet_canstart(ctx))
-		goto started_net;
-
-	switch (pid = ps_inet_start(ctx)) {
-	case -1:
-		return -1;
-	case 0:
-		return 0;
-	default:
-		logdebugx("spawned network proxy on PID %d", pid);
+	if (ps_inet_canstart(ctx)) {
+		switch (pid = ps_inet_start(ctx)) {
+		case -1:
+			return -1;
+		case 0:
+			return 0;
+		default:
+			logdebugx("spawned network proxy on PID %d", pid);
+		}
 	}
 
-started_net:
 	if (!(ctx->options & DHCPCD_TEST)) {
 		switch (pid = ps_ctl_start(ctx)) {
 		case -1:

@@ -97,22 +97,18 @@ bool
 ps_inet_canstart(const struct dhcpcd_ctx *ctx)
 {
 
-#ifdef INET
-	if ((ctx->options & (DHCPCD_IPV4 | DHCPCD_MANAGER)) ==
-	    (DHCPCD_IPV4 | DHCPCD_MANAGER))
-		return true;
+	/*
+	 * The only time we will never need the network proxy
+	 * is for an IPv4 only build that is not started in manager mode.
+	 * Even if IPv4 and IPv6 are disabled globally, an interface
+	 * might arrive later which needs it enabled.
+	 */
+#if defined(INET) && !defined(INET6)
+	return ctx->options & DHCPCD_MANAGER ? true : false;
+#else
+	UNUSED(ctx);
+	return true;
 #endif
-#if defined(INET6) && !defined(__sun)
-	if (ctx->options & DHCPCD_IPV6)
-		return true;
-#endif
-#ifdef DHCP6
-	if ((ctx->options & (DHCPCD_IPV6 | DHCPCD_MANAGER)) ==
-	    (DHCPCD_IPV6 | DHCPCD_MANAGER))
-		return true;
-#endif
-
-	return false;
 }
 
 static int
@@ -136,9 +132,7 @@ ps_inet_startcb(struct ps_process *psp)
 	errno = 0;
 
 #ifdef INET
-	if ((ctx->options & (DHCPCD_IPV4 | DHCPCD_MANAGER)) ==
-	    (DHCPCD_IPV4 | DHCPCD_MANAGER))
-	{
+	if (ctx->options & DHCPCD_MANAGER) {
 		ctx->udp_rfd = dhcp_openudp(NULL);
 		if (ctx->udp_rfd == -1)
 			logerr("%s: dhcp_open", __func__);
@@ -160,31 +154,27 @@ ps_inet_startcb(struct ps_process *psp)
 	}
 #endif
 #if defined(INET6) && !defined(__sun)
-	if (ctx->options & DHCPCD_IPV6) {
-		ctx->nd_fd = ipv6nd_open(true);
-		if (ctx->nd_fd == -1)
-			logerr("%s: ipv6nd_open", __func__);
+	ctx->nd_fd = ipv6nd_open(true);
+	if (ctx->nd_fd == -1)
+		logerr("%s: ipv6nd_open", __func__);
 #ifdef PRIVSEP_RIGHTS
-		else if (ps_rights_limit_fd_rdonly(ctx->nd_fd) == -1) {
-			logerr("%s: ps_rights_limit_fd_rdonly", __func__);
-			close(ctx->nd_fd);
-			ctx->nd_fd = -1;
-		}
-#endif
-		else if (eloop_event_add(ctx->eloop, ctx->nd_fd, ELE_READ,
-		    ps_inet_recvra, ctx) == -1)
-		{
-			logerr("%s: eloop_event_add RA", __func__);
-			close(ctx->nd_fd);
-			ctx->nd_fd = -1;
-		} else
-			ret++;
+	else if (ps_rights_limit_fd_rdonly(ctx->nd_fd) == -1) {
+		logerr("%s: ps_rights_limit_fd_rdonly", __func__);
+		close(ctx->nd_fd);
+		ctx->nd_fd = -1;
 	}
 #endif
-#ifdef DHCP6
-	if ((ctx->options & (DHCPCD_IPV6 | DHCPCD_MANAGER)) ==
-	    (DHCPCD_IPV6 | DHCPCD_MANAGER))
+	else if (eloop_event_add(ctx->eloop, ctx->nd_fd, ELE_READ,
+	    ps_inet_recvra, ctx) == -1)
 	{
+		logerr("%s: eloop_event_add RA", __func__);
+		close(ctx->nd_fd);
+		ctx->nd_fd = -1;
+	} else
+		ret++;
+#endif
+#ifdef DHCP6
+	if (ctx->options & DHCPCD_MANAGER) {
 		ctx->dhcp6_rfd = dhcp6_openudp(0, NULL);
 		if (ctx->dhcp6_rfd == -1)
 			logerr("%s: dhcp6_open", __func__);
