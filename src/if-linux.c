@@ -1983,6 +1983,7 @@ if_address6(unsigned char cmd, const struct ipv6_addr *ia)
 struct ifiaddr6
 {
 	unsigned int ifa_ifindex;
+	unsigned int ifa_ifflags;
 	struct in6_addr ifa_addr;
 	uint32_t ifa_flags;
 	bool ifa_found;
@@ -2007,14 +2008,21 @@ _if_addrflags6(__unused struct dhcpcd_ctx *ctx,
 	for (; RTA_OK(rta, len); rta = RTA_NEXT(rta, len)) {
 		switch (rta->rta_type) {
 		case IFA_ADDRESS:
-			if (IN6_ARE_ADDR_EQUAL(&ia->ifa_addr, (struct in6_addr *)RTA_DATA(rta)))
+			// Skip destination address
+			if (ia->ifa_ifflags & IFF_POINTOPOINT)
+				continue;
+			// Fallthrough
+		case IFA_LOCAL:
+			if (IN6_ARE_ADDR_EQUAL(&ia->ifa_addr,
+			    (struct in6_addr *)RTA_DATA(rta)))
 				ia->ifa_found = matches_addr = true;
 			else
 				matches_addr = false;
 			break;
 		case IFA_FLAGS:
 			if (matches_addr)
-				memcpy(&ia->ifa_flags, RTA_DATA(rta), sizeof(ia->ifa_flags));
+				memcpy(&ia->ifa_flags, RTA_DATA(rta),
+				    sizeof(ia->ifa_flags));
 			break;
 		}
 	}
@@ -2027,6 +2035,7 @@ if_addrflags6(const struct interface *ifp, const struct in6_addr *addr,
 {
 	struct ifiaddr6 ia = {
 		.ifa_ifindex = ifp->index,
+		.ifa_ifflags = ifp->flags,
 		.ifa_addr = *addr,
 		.ifa_found = false,
 	};
